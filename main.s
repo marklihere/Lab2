@@ -10,7 +10,7 @@
 ;  Section 3.3.10, Program 3.12
 ;
 ;Copyright 2012 by Jonathan W. Valvano, valvano@mail.utexas.edu
-;   You may use, edit, run or distribute this file
+;   You may use, edit, run or diSTRibute this file
 ;   as long as the above copyright notice remains
 ;THIS SOFTWARE IS PROVIDED "AS IS".  NO WARRANTIES, WHETHER EXPRESS, IMPLIED
 ;OR STATUTORY, INCLUDING, BUT NOT LIMITED TO, IMPLIED WARRANTIES OF
@@ -20,25 +20,23 @@
 ;For more information about my classes, my research, and my books, see
 ;http://users.ece.utexas.edu/~valvano/
 
-
        THUMB
        AREA    DATA, ALIGN=2
        ALIGN          
        AREA    |.text|, CODE, READONLY, ALIGN=2
        EXPORT  Start
-	   ;unlock 0x4C4F434B
 
-
-	   ;PF4 is SW1
-	   ;PF0 is SW2
-	   ;PF1 is RGB Red
-	   ;Enable Clock RCGCGPIO p338
-	   ;Set direction 1 is out 0 is in. GPIODIR
-	   ;DEN 
-	   ; 0x3FC
-RESET	EQU	0x40025004  ; PF0
-START	EQU	0x40025020  ; PF3
+; Masked addr for each switch on GPIO_F
+RESETB	EQU	0x40025004  ; PF0
+GO	    EQU	0x40025020  ; PF3
 STOP	EQU	0x40025040  ; PF4
+
+; Base Addresses and Unlock codes/address
+RCGCGPIO EQU 0x400FE108 ; Clocks for GPIOs
+UNLOCK	EQU 0x4C4F434B  ; Unlock code for GPIO Port F
+PORTF	EQU 0x40025000  ; GPIO Port F
+PORTC	EQU	0x40006000	; GPIO Port C
+PORTE	EQU	0x40024000	; GPIO Port E
 
 BIT0	EQU 0x40006040  ; PC4
 BIT1	EQU 0x40006080  ; PC5
@@ -52,117 +50,120 @@ BIT8	EQU 0x40024040  ; PE4
 BIT9	EQU 0x40024080  ; PE5
 	
 Start  
-;----------------------------
+;------------------------------------------------------
 ; Initialize GPIO Ports
-	mov32 R0, #0x400FE108 ; Enable GPIO Clock RCGCGPIO
-	mov R1, #0x34    ; Enables GPIO Port C, E, and F
-	str R1, [R0]     ;
+	;MOV32 R0, #0x400FE108 ; Enable GPIO Clock RCGCGPIO
+	LDR R0, =RCGCGPIO ; Enable GPIO Clock RCGCGPIO
+	MOV R1, #0x34    ; Enables GPIO Port C, E, and F
+	STR R1, [R0]     ;
 
-;---------------------------
+;-----------------------
 ; Unlock Port F
-	mov32 R0, #0x40025000 ;GPIOF address
-	
-	;unlock GPIOF
-	mov32 R1, #0x4C4F434B; GPIO Unlock code. 
-	str R1, [R0,#0x520];
+	LDR R0, =PORTF	
+	LDR R1, =UNLOCK
+	STR R1, [R0,#0x520];
 
-;; Enable port F for switches
-	mov R1, #0x19   ; enable bits 0, 3, 4 for switches
-	str R1, [R0,#0x524]; set GPIOCR with above value
-	mov R1, #0x00;   
-	str R1, [R0,#0x420];   disable alternative function
-	mov R1, #0x19 ; enable weak pullup on pins for bits 0, 3, 4
-	str R1, [R0,#0x510]; set GPIOPUR with above value
-	mov R1, #0xE6      ; pins 0, 3, 4 as inputs
-	str R1, [R0,#0x400] ;set GPIODIR with above value
-	mov R1, #0x19 ; enable mask for positive logic with bits 0, 3, 4
-	str R1, [R0,#0x51C] ;digital enable bit 0, 3, 4
+; Enable port F for switches
+	MOV R1, #0x19      ; enable bits 0,3,4 for switches
+	STR R1, [R0,#0x524]; GPIOCR enable [0,3,4]
+	STR R1, [R0,#0x510]; GPIOPUR on [0,3,4]
+	MOV R1, #0xE6      ; [0,3,4] are inputs
+	STR R1, [R0,#0x400]; GPIODIR set as above
+	MOV R1, #0x19
+	STR R1, [R0,#0x51C] ;GPIODEN [0,3,4]
 
-; Enable port C
-	mov32 R0, #0x40006000 ;GPIOC base address
-	;unlock GPIOF
-	mov32 R1, #0x4C4F434B; GPIO Unlock code. 
-	str R1, [R0,#0x520];
+; Enable port C for lower 4 bits of LED
+	LDR R0, =PORTC
+	LDR R1, =UNLOCK
+	STR R1, [R0,#0x520];
 
-	mov R1, #0xF0;   
-	str R1, [R0,#0x524]; set GPIOCR with above value
-	mov R1, #0x00;   
-	str R1, [R0,#0x420];   disable alternative function
-	mov R1, #0xF0;      ; bit [7:4] of PC are outputs
-	str R1, [R0,#0x400] ;set GPIODIR with above value
-	str R1, [R0,#0x510]; set GPIOPUR with above value  enables pullup on bits [7:4]
-	str R1, [R0,#0x51C] ;digital enable bits[7:4]
+	MOV R1, #0xF0;   
+	STR R1, [R0,#0x524]; GPIOCR enable [7:4]
+	MOV R1, #0xF0;      ; [7:4] are outputs
+	STR R1, [R0,#0x510] ; GPIOPUR [7:4]
+	STR R1, [R0,#0x400] ; GPIODIR set as above
+	STR R1, [R0,#0x51C] ; GPIODEN [7:4]
 
-; Enable port E
-	mov32 R0, #0x40024000 ;GPIOE base address
-	mov R1, #0x3F;
-	str R1, [R0,#0x524]; set GPIOCR with above value
-	mov R1, #0x00;   
-	str R1, [R0,#0x420];   disable alternative function
-	mov R1, #0x3F;      ; bit [5:0] of PC are outputs
-	str R1, [R0,#0x400] ;set GPIODIR with above value
-	str R1, [R0,#0x510]; set GPIOPUR with above value  enables pullup on bits [5:0]
-	str R1, [R0,#0x51C] ;digital enable bits[5:0]
+; Enable port E for higher 6 bits of LED
+	LDR R0, =PORTE
+	MOV R1, #0x3F;
+	STR R1, [R0,#0x524] ; GPIOCR enable [5:0]
+	MOV R1, #0x3F;      ; [5:0] are outputs
+	STR R1, [R0,#0x400] ; GPIODIR set as above
+	STR R1, [R0,#0x510] ; GPIOPUR [5:0]
+	STR R1, [R0,#0x51C] ; digital enable bits[5:0]
 
-Reset
-;; Turn off bits [3:0] of LED bar
-	mov32 R0, #0x40006000 ;GPIOC base address
-	MOV32 R1, #0xF0;
-	STR R1, [R0,#0x3C0]	;write the above value to GPIOF ODR register.
+;------------------------------------------------------
+; ACTUAL PROGRAM!!
+;------------------------------------------------------
 
-;; Turn off bits [7:4] of LED bar  PE[0:5]
-	mov32 R0, #0x40024000 ;GPIOE base address
-	MOV32 R1, #0x3F	;  
-	STR R1, [R0,#0x0FC]	;write the above value to GPIOF ODR register.
+Reset	
+	MOV R4, #0            ; global counter = 0, sorry
+	BL print
 
-;; Count = 0
-	MOV R4, #0x0    ; We suck and use global variables
+; Is Start Pushed?  if Y start Running, if N, Reset
+	LDR R0, =GO          ; Read input of Start switch
+	LDR R1, [R0]         ; GPIOF pin 3, the external button
+	CMP R1, #0x0         ; Check if button pushed
+	BEQ Running;
+	B Reset;
 
 ;----------------------
-; ACTUAL PROGRAM!!
-;
+; Runstate
+Running
+		ADD R4, #1          ; counter++
+		BL print
 
-;; Checked if reset if pushed
-		LDR R0, =RESET          ; Read input of Reset switch
-		LDR R1, [R0]            ; GPIOF pin0 for Reset switch
-		CMP R1, #0x0            ; Check if button pushed
-		BEQ pushed;
-;; If stop is pushed during initial state, it has no effect because LEDs are already off
-; and counter is already zero, so skip to reading START button
-;; Check if Start is pushed		
-		LDR R0, =START          ; Read input of Start switch
-		LDR R1, [R0]            ; GPIOF pin 3, the external button
-		CMP R1, #0x0            ; Check if button pushed
-		BEQ start;    
-		B   Reset
-start
-		ADD R4, #0x1        ; Nice global counter is increment
+; Check if reset
+		LDR R0, =RESETB     ; Read input of Reset switch
+		LDR R1, [R0]        ; GPIOF pin0 for Reset switch
+		CMP R1, #0x0        ; reset button pushed?
+		BEQ Reset
 
-;; Delay loop 
-		MOV R0, #0xf        ; delay counter  0x28B0AA 2,666,666 cycles 
-delay	SUBS R0, #1    	;  decrement counter
+; Check if stop
+		LDR R0, =STOP       ; Addr of Stop switch
+		LDR R1, [R0]        ; Read switch
+		CMP R1, #0x0        ; stop button pushed?
+		BEQ Stopstate       ; Yep
+
+; enter delay b/c no reset and no stop, so keep counting 
+; Delay loop for remainder of 0.25s
+		MOV32 R0, #0x145855 ; delay counter 1,333,333 cycles 
+delay	SUBS R0, #1    	    ; decrement delay counter
 		BNE delay
 
-;; Real check for inputs while running
-;; Checked if reset if pushed
-		LDR R0, =RESET          ; Read input of Reset switch
-		LDR R1, [R0]            ; GPIOF pin0 for Reset switch
-		CMP R1, #0x0            ; Check if button pushed
-		BEQ pushed;
-;; If stop is pushed during initial state, it has no effect because LEDs are already off
-; and counter is already zero, so skip to reading START button
-;; Check if Start is pushed		
-		LDR R0, =START          ; Read input of Start switch
-		LDR R1, [R0]            ; GPIOF pin 3, the external button
-		CMP R1, #0x0            ; Check if button pushed
+; Finished 0.5s delay, keep on running
+		B Running
 
+;----------------------
+Stopstate
+; Check if reset
+		LDR R0, =RESETB     ; Read input of Reset switch
+		LDR R1, [R0]        ; GPIOF pin0 for Reset switch
+		CMP R1, #0x0        ; reset button pushed?
+		BEQ Reset
 
-pushed
-	LDR R1, =0x40024040   ; BIT 7
-	MOV R0, #0x8          ;
-	STR R0, [R1];
-       B   Reset
+; Check if start
+		LDR R0, =GO        ; Read input of Reset switch
+		LDR R1, [R0]       ; GPIOF pin0 for Reset switch
+		CMP R1, #0x0       ; Check if button pushed
+		BEQ Running
+		B Stopstate
 
-       ALIGN      
-       END  
+;----------------------
+; Print Subroutine
+print
+	PUSH {LR}              ; Store Return
+	MVN R5, R4;            ; Invert counter due to active low LEDs
+	LDR R0, =PORTC         ; GPIOC base address
+	LSL R10, R5, #4        ; get lower bits [3:0] of counter into bit position [7:4] of R10
+	STR R10, [R0,#0x3C0]   ; write counter[3:0]  into Port C[7:4]
+	LDR R0, =PORTE         ; GPIOE base address
+	LSR R10, R5, #4        ; rotate counter upper 6 bits for LED display into position [5:0]
+	STR R10, [R0,#0x0FC]   ; write upper six bits into LED disply
+	POP {LR}
+	BX LR
+
+	ALIGN      
+    END  
            
